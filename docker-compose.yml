@@ -1,0 +1,200 @@
+name: freelance
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: freelance-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: freelance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: freelance
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U freelance -p 5432"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: freelance-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: freelance-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://freelance:${POSTGRES_PASSWORD}@postgres:5432/freelance
+      - JWT_ACCESS_TTL=15
+      - JWT_REFRESH_TTL=3
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - RUST_LOG=info
+      - SERVER_PORT=3001
+      - SMTP_HOST=postfix
+      - SMTP_PORT=25
+      - EMAIL_ADDR=info@freelance.market.com
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - REFRESH_PEPPER=${REFRESH_PEPPER}
+      - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
+      - TEST=True
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      postfix:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: freelance-frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=https://${DOMAIN}/api
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: freelance-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: freelance-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: freelance-promtail
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./monitoring/promtail/config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: freelance-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin123}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3002:3000"
+    depends_on:
+      - prometheus
+      - loki
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: freelance-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-webroot:/var/www/certbot
+      - certbot-conf:/etc/letsencrypt
+    depends_on:
+      - frontend
+      - backend
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.5.1
+    restart: unless-stopped
+    command:
+      - --nginx.scrape-uri=http://nginx:8080/stub_status
+    ports:
+      - "9113:9113"
+    depends_on:
+      - nginx
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot-webroot:/var/www/certbot
+      - certbot-conf:/etc/letsencrypt
+    entrypoint: /bin/sh -c '
+      if [ ! -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem ]; then
+        echo "First run - obtaining certificate...";
+        certbot certonly --webroot --webroot-path=/var/www/certbot \
+          --email ${EMAIL} --agree-tos --no-eff-email --non-interactive -d ${DOMAIN};
+      fi
+      echo "Starting renewal loop...";
+      trap exit TERM;
+      while :; do certbot renew --quiet; sleep 12h & wait $${!}; done'
+    environment:
+      - DOMAIN=${DOMAIN}
+      - EMAIL=${EMAIL}
+    depends_on:
+      - nginx
+
+  postfix:
+    image: boky/postfix:latest
+    container_name: postfix
+    restart: unless-stopped
+    environment:
+      - ALLOWED_SENDER_DOMAINS=localhost freelance.market.com
+      - POSTFIX_myhostname=freelance.market.com
+      - RELAYHOST=[smtp.gmail.com]:587
+      - RELAYHOST_USERNAME=${RELAYHOST_USERNAME}
+      - RELAYHOST_PASSWORD=${RELAYHOST_PASSWORD}
+      - POSTFIX_smtp_tls_security_level=encrypt
+      - POSTFIX_smtp_sasl_auth_enable=yes
+      - POSTFIX_smtp_sasl_security_options=noanonymous
+      - MYNETWORKS=127.0.0.0/8 172.16.0.0/12 10.0.0.0/8 172.17.0.0/16 172.18.0.0/16
+      - MESSAGE_SIZE_LIMIT=10240000
+      - POSTFIX_smtpd_tls_security_level=none
+      - POSTFIX_inet_protocols=ipv4
+      - POSTFIX_always_add_missing_headers=yes
+      - POSTFIX_aliases_database=lmdb:/etc/aliases
+    ports:
+      - "1025:25"
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+  certbot-webroot:
+  certbot-conf:

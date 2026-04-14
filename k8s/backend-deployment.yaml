@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: freelance
+  annotations:
+    kompose.cmd: kompose convert --out k8s/
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: backend
+  name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: backend
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert --out k8s/
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: backend
+    spec:
+      containers:
+        - env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: postgres://freelance:$(POSTGRES_PASSWORD)@postgres:5432/freelance
+            - name: EMAIL_ADDR
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: EMAIL
+            - name: JWT_ACCESS_TTL
+              value: "15"
+            - name: JWT_REFRESH_TTL
+              value: "3"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: JWT_SECRET
+            - name: REDIS_URL
+              value: redis://redis:6379
+            - name: REFRESH_PEPPER
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: REFRESH_PEPPER
+            - name: RUST_LOG
+              value: info
+            - name: SERVER_PORT
+              value: "3001"
+            - name: SMTP_HOST
+              value: postfix
+            - name: SMTP_PORT
+              value: "25"
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: TELEGRAM_BOT_TOKEN
+            - name: TELEGRAM_BOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: TELEGRAM_BOT_USERNAME
+            - name: TEST
+              value: "False"
+          image: backend
+          name: freelance-backend
+          ports:
+            - containerPort: 3001
+              protocol: TCP
+      restartPolicy: Always

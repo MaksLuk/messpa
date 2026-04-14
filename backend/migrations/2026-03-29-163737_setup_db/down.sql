@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS team_members;
+DROP TABLE IF EXISTS user_info_executor;
+DROP TABLE IF EXISTS teams;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS specializations;
+DROP TYPE IF EXISTS team_roles;
+DROP TYPE IF EXISTS roles;
+DROP TYPE IF EXISTS languages;
+DROP TYPE IF EXISTS currencies;

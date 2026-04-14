@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: freelance
+  annotations:
+    kompose.cmd: kompose convert --out k8s/
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: postfix
+  name: postfix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: postfix
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert --out k8s/
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: postfix
+    spec:
+      containers:
+        - env:
+            - name: DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: DOMAIN
+            - name: ALLOWED_SENDER_DOMAINS
+              value: localhost $(DOMAIN)
+            - name: MESSAGE_SIZE_LIMIT
+              value: "10240000"
+            - name: MYNETWORKS
+              value: 127.0.0.0/8 172.16.0.0/12 10.0.0.0/8 172.17.0.0/16 172.18.0.0/16
+            - name: POSTFIX_aliases_database
+              value: lmdb:/etc/aliases
+            - name: POSTFIX_always_add_missing_headers
+              value: "yes"
+            - name: POSTFIX_inet_protocols
+              value: ipv4
+            - name: POSTFIX_myhostname
+              value: freelance.market.com
+            - name: POSTFIX_smtpd_tls_security_level
+              value: none
+            - name: ALLOWED_SENDER_DOMAINS
+              value: "freelance.market.com localhost"
+            - name: POSTFIX_myhostname
+              value: "freelance.market.com"
+            - name: RELAYHOST
+              value: "[smtp.gmail.com]:587"
+            - name: RELAYHOST_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: RELAYHOST_USERNAME
+            - name: RELAYHOST_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: secrets
+                  key: RELAYHOST_PASSWORD
+            - name: POSTFIX_smtp_tls_security_level
+              value: "encrypt"
+            - name: POSTFIX_smtp_sasl_auth_enable
+              value: "yes"
+            - name: POSTFIX_smtp_sasl_security_options
+              value: "noanonymous"
+          image: boky/postfix:latest
+          name: postfix
+          ports:
+            - containerPort: 25
+              protocol: TCP
+      restartPolicy: Always

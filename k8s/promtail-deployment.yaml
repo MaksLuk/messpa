@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: freelance
+  annotations:
+    kompose.cmd: kompose convert --out k8s/
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: promtail
+  name: promtail
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: promtail
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert --out k8s/
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: promtail
+    spec:
+      containers:
+        - args:
+            - -config.file=/etc/promtail/config.yml
+          image: grafana/promtail:3.1.0
+          name: freelance-promtail
+          volumeMounts:
+            - mountPath: /etc/promtail/config.yml
+              name: promtail-cm1
+              subPath: config.yml
+      restartPolicy: Always
+      volumes:
+        - configMap:
+            items:
+              - key: config.yml
+                path: config.yml
+            name: promtail-cm1
+          name: promtail-cm1

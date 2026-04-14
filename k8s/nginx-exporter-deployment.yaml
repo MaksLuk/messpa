@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: freelance
+  annotations:
+    kompose.cmd: kompose convert --out k8s/
+    kompose.version: 1.38.0 (a8f5d1cbd)
+  labels:
+    io.kompose.service: nginx-exporter
+  name: nginx-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: nginx-exporter
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert --out k8s/
+        kompose.version: 1.38.0 (a8f5d1cbd)
+      labels:
+        io.kompose.service: nginx-exporter
+    spec:
+      containers:
+        - args:
+            - --nginx.scrape-uri=http://nginx:8080/stub_status
+          image: nginx/nginx-prometheus-exporter:1.5.1
+          name: nginx-exporter
+          ports:
+            - containerPort: 9113
+              protocol: TCP
+      restartPolicy: Always
