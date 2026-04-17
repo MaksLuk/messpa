@@ -55,7 +55,7 @@ pub struct SendEmailPayload {
     pub email: String,
 }
 
-/// POST /api/auth/telegram/send-code
+/// POST /api/v1/auth/telegram/send-code
 pub async fn send_telegram_code(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -109,7 +109,7 @@ pub async fn send_telegram_code(
     }))
 }
 
-/// POST /api/auth/telegram/verify
+/// POST /api/v1/auth/telegram/verify
 pub async fn verify_telegram_code(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -256,7 +256,7 @@ pub async fn verify_telegram_code(
     Ok((jar, response))
 }
 
-/// POST /api/auth/email/send-code
+/// POST /api/v1/auth/email/send-code
 pub async fn send_email_code(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -319,7 +319,7 @@ pub async fn send_email_code(
     }))
 }
 
-// POST /api/auth/email/verify
+// POST /api/v1/auth/email/verify
 pub async fn verify_email_code(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -466,7 +466,7 @@ pub async fn verify_email_code(
     Ok((jar, response))
 }
 
-/// POST /api/auth/refresh
+/// POST /api/v1/auth/refresh
 pub async fn refresh_token(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -574,7 +574,7 @@ pub async fn refresh_token(
     Ok((jar, response))
 }
 
-/// POST /api/auth/logout
+/// POST /api/v1/auth/logout
 pub async fn logout(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -624,7 +624,7 @@ pub async fn logout(
     ))
 }
 
-/// POST /api/auth/logout-all
+/// POST /api/v1/auth/logout-all
 pub async fn logout_all(
     State(state): State<Arc<AppState>>,
     Extension(user_id): Extension<Uuid>,

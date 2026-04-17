@@ -58,7 +58,7 @@ pub async fn get_current_user(
     Ok(ApiResponse::new_ok(user))
 }
 
-// PATCH /api/user/display-name
+// PATCH /api/v1/user/display-name
 pub async fn update_display_name(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -85,7 +85,7 @@ pub async fn update_display_name(
     Ok(ApiResponse::new_ok(user))
 }
 
-// PATCH /api/user/language
+// PATCH /api/v1/user/language
 pub async fn update_language(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -112,7 +112,7 @@ pub async fn update_language(
     Ok(ApiResponse::new_ok(user))
 }
 
-// PATCH /api/user/currency
+// PATCH /api/v1/user/currency
 pub async fn update_currency(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -139,7 +139,7 @@ pub async fn update_currency(
     Ok(ApiResponse::new_ok(user))
 }
 
-// POST /api/user/email
+// POST /api/v1/user/email
 pub async fn initiate_set_email(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<User>,
@@ -194,7 +194,7 @@ pub async fn initiate_set_email(
     }))
 }
 
-// POST /api/user/email/verify
+// POST /api/v1/user/email/verify
 pub async fn verify_set_email(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -256,7 +256,7 @@ pub async fn verify_set_email(
     Ok(ApiResponse::new_ok(user))
 }
 
-// POST /api/user/telegram
+// POST /api/v1/user/telegram
 pub async fn initiate_set_telegram(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<User>,
@@ -300,7 +300,7 @@ pub async fn initiate_set_telegram(
     }))
 }
 
-// POST /api/user/telegram/verify
+// POST /api/v1/user/telegram/verify
 pub async fn verify_set_telegram(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,

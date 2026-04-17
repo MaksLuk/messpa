@@ -18,6 +18,7 @@ mod handlers;
 mod api_response;
 mod middleware;
 mod metrics;
+mod openapi;
 mod utils;
 mod bot;
 

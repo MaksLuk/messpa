@@ -4,6 +4,8 @@ use axum::{
     middleware,
 };
 use tower_governor::GovernorLayer;
+use utoipa_scalar::{Scalar, Servable};
+use utoipa::OpenApi;
 
 use std::sync::Arc;
 
@@ -12,13 +14,23 @@ use crate::{
     middleware::auth::auth_middleware,
     middleware::rate_limit::rate_limit_config,
     state::AppState,
+    openapi::ApiDoc,
 };
 
 pub fn api_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .layer(GovernorLayer::new(rate_limit_config()))
-        .nest("/api/auth", auth_routes(state.clone()))
-        .nest("/api/user", user_routes(state))
+        .nest("/api/v1", compare_routes(state.clone()))
+        .route("/api/v1/openapi.json", axum::routing::get(|| async { 
+            axum::Json(ApiDoc::openapi()) 
+        }))
+        .merge(Scalar::with_url("/api/v1/scalar", ApiDoc::openapi()))
+}
+
+pub fn compare_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+    Router::new()
+        .nest("/auth", auth_routes(state.clone()))
+        .nest("/user", user_routes(state))
 }
 
 fn auth_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
