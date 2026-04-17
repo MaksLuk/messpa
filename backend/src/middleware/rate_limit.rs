@@ -11,4 +11,3 @@ pub fn rate_limit_config() -> GovernorConfig<PeerIpKeyExtractor, NoOpMiddleware>
         .finish()
         .unwrap()
 }
-

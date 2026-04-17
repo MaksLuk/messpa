@@ -17,6 +17,8 @@ pub async fn check_and_increment(
     Ok(true)
 }
 
+/*
+возможно пригодится
 pub async fn is_blocked(
     redis: &mut redis::aio::ConnectionManager,
     key: &str,
@@ -32,3 +34,4 @@ pub async fn set_block(
     let _: () = redis.set_ex(key, "blocked", seconds as u64).await?;
     Ok(())
 }
+*/

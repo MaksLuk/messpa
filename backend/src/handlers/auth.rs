@@ -88,7 +88,7 @@ pub async fn send_telegram_code(
         "email": null
     });
 
-    redis.set_ex::<_, _, ()>(&redis_key, data.to_string(), 900) // 15 минут
+    redis.set_ex::<_, _, ()>(&redis_key, data.to_string(), 900)
         .await
         .map_err(|e| ApiResponse::new_err(
             ErrorCode::Redis,
@@ -236,6 +236,7 @@ pub async fn verify_telegram_code(
     let access_token = jwt::generate_access_token(
         user.id,
         &state.config.jwt_secret,
+        state.config.jwt_access_ttl * 60,
     );
 
     let cookie = Cookie::build(("refresh_token", refresh_token))
@@ -376,7 +377,7 @@ pub async fn verify_email_code(
         ))?;
 
     let user: User = match users::table
-        .filter(users::email.eq(Some(email.clone())))
+        .filter(users::email.eq(Some(email)))
         .select(User::as_select())
         .first::<User>(&mut conn)
         .optional()
@@ -445,6 +446,7 @@ pub async fn verify_email_code(
     let access_token = jwt::generate_access_token(
         user.id,
         &state.config.jwt_secret,
+        state.config.jwt_access_ttl * 60,
     );
 
     let cookie = Cookie::build(("refresh_token", refresh_token))
@@ -549,6 +551,7 @@ pub async fn refresh_token(
     let new_access_token = jwt::generate_access_token(
         session.user_id,
         &state.config.jwt_secret,
+        state.config.jwt_access_ttl * 60,
     );
 
     let cookie = Cookie::build(("refresh_token", new_refresh_token))

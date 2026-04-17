@@ -11,12 +11,12 @@ pub struct Claims {
     pub jti: Uuid,
 }
 
-pub fn generate_access_token(user_id: Uuid, secret: &str) -> String {
+pub fn generate_access_token(user_id: Uuid, secret: &str, exp: i64) -> String {
     let now = Utc::now();
     let claims = Claims {
         sub: user_id,
         iat: now.timestamp() as usize,
-        exp: (now + Duration::minutes(15)).timestamp() as usize,
+        exp: (now + Duration::minutes(exp)).timestamp() as usize,
         jti: Uuid::new_v4(),
     };
     encode(&Header::default(), &claims, &EncodingKey::from_secret(secret.as_ref())).unwrap()
