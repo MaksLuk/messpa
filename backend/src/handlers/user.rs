@@ -1,6 +1,5 @@
 use axum::{
     extract::{State, Extension},
-    response::IntoResponse,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -14,8 +13,9 @@ use crate::{
     state::AppState,
     models::user::{User, Language, Currency},
     schema::users,
-    error::AppError,
     utils::{mail, token},
+    api_response::{ApiResult, ApiResponse, ErrorCode},
+    handlers::auth::EmailResponse,
 };
 
 #[derive(Deserialize)]
@@ -44,13 +44,7 @@ pub struct VerifyPayload {
     pub code: String,
 }
 
-#[derive(Serialize)]
-pub struct EmailResponse {
-    pub magic_token: String,
-    pub message: String,
-}
-
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct TelegramResponse {
     pub deep_link: String,
     pub magic_token: String,
@@ -60,11 +54,8 @@ pub struct TelegramResponse {
 // GET /api/user/me
 pub async fn get_current_user(
     Extension(user): Extension<User>,
-) -> impl IntoResponse {
-    Json(serde_json::json!({
-        "ok": true,
-        "data": user
-    }))
+) -> ApiResult<User> {
+    Ok(ApiResponse::new_ok(user))
 }
 
 // PATCH /api/user/display-name
@@ -72,16 +63,26 @@ pub async fn update_display_name(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
     Json(payload): Json<UpdateDisplayNamePayload>,
-) -> Result<impl IntoResponse, AppError> {
-    let mut conn = state.db_pool.get().map_err(|e| AppError::Pool(e.into()))?;
+) -> ApiResult<User> {
+    let mut conn = state.db_pool.get()
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при подключении к БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     diesel::update(users::table.find(user.id))
         .set(users::display_name.eq(&payload.display_name))
-        .execute(&mut conn)?;
+        .execute(&mut conn)
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при работе с БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     user.display_name = payload.display_name;
 
-    Ok(Json(serde_json::json!({"ok": true, "data": user})))
+    Ok(ApiResponse::new_ok(user))
 }
 
 // PATCH /api/user/language
@@ -89,16 +90,26 @@ pub async fn update_language(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
     Json(payload): Json<UpdateLanguagePayload>,
-) -> Result<impl IntoResponse, AppError> {
-    let mut conn = state.db_pool.get().map_err(|e| AppError::Pool(e.into()))?;
+) -> ApiResult<User> {
+    let mut conn = state.db_pool.get()
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при подключении к БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     diesel::update(users::table.find(user.id))
         .set(users::language.eq(&payload.language))
-        .execute(&mut conn)?;
+        .execute(&mut conn)
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при работе с БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     user.language = payload.language;
 
-    Ok(Json(serde_json::json!({"ok": true, "data": user})))
+    Ok(ApiResponse::new_ok(user))
 }
 
 // PATCH /api/user/currency
@@ -106,16 +117,26 @@ pub async fn update_currency(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
     Json(payload): Json<UpdateCurrencyPayload>,
-) -> Result<impl IntoResponse, AppError> {
-    let mut conn = state.db_pool.get().map_err(|e| AppError::Pool(e.into()))?;
+) -> ApiResult<User> {
+    let mut conn = state.db_pool.get()
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при подключении к БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     diesel::update(users::table.find(user.id))
         .set(users::currency.eq(&payload.currency))
-        .execute(&mut conn)?;
+        .execute(&mut conn)
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при работе с БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     user.currency = payload.currency;
 
-    Ok(Json(serde_json::json!({"ok": true, "data": user})))
+    Ok(ApiResponse::new_ok(user))
 }
 
 // POST /api/user/email
@@ -123,9 +144,13 @@ pub async fn initiate_set_email(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<User>,
     Json(payload): Json<InitiateEmailPayload>,
-) -> Result<impl IntoResponse, AppError> {
+) -> ApiResult<EmailResponse> {
     if user.email.is_some() {
-        return Err(AppError::Validation("Email уже установлен".into()));
+        return Err(ApiResponse::new_err(
+            ErrorCode::Validation,
+            "Email уже установлен".to_string(),
+            None,
+        ));
     }
 
     let magic_token = token::generate_magic_token();
@@ -141,9 +166,13 @@ pub async fn initiate_set_email(
     });
 
     let mut redis = state.redis_conn.clone();
-    redis.set_ex(&redis_key, data.to_string(), 900)
+    redis.set_ex::<_, _, ()>(&redis_key, data.to_string(), 900)
         .await
-        .map_err(|e| AppError::Redis(e))?;
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Redis,
+            "Неизвестная ошибка, повторите запрос позже".to_string(),
+            Some(format!("Redis: {}", e)),
+        ))?;
 
     mail::send_mail(
         &state.config.smtp_host,
@@ -153,15 +182,16 @@ pub async fn initiate_set_email(
         "Подтверждение email",
         format!("Код подтверждения: {}", code),
     ).await
-    .map_err(|e| AppError::Validation(format!("Не удалось отправить письмо: {}", e)))?;
+    .map_err(|e| ApiResponse::new_err(
+        ErrorCode::Mail,
+        "Не удалось отправить письмо".to_string(),
+        Some(e),
+    ))?;
 
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "data": EmailResponse {
-            magic_token,
-            message: "Код отправлен на ваш email".to_string()
-        }
-    })))
+    Ok(ApiResponse::new_ok(EmailResponse {
+        magic_token,
+        message: "Код отправлен на ваш email".to_string()
+    }))
 }
 
 // POST /api/user/email/verify
@@ -169,47 +199,74 @@ pub async fn verify_set_email(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
     Json(payload): Json<VerifyPayload>,
-) -> Result<impl IntoResponse, AppError> {
+) -> ApiResult<User> {
     let redis_key = format!("pending_email:{}", payload.magic_token);
     let mut redis = state.redis_conn.clone();
 
     let data_str: Option<String> = redis.get(&redis_key).await.ok();
-    let data_str = data_str.ok_or_else(|| AppError::Validation("Код истёк или недействителен".into()))?;
+    let data_str = data_str.ok_or_else(|| ApiResponse::new_err(
+        ErrorCode::Expired,
+        "Код истёк или недействителен".to_string(),
+        None,
+    ))?;
 
     let data: serde_json::Value = serde_json::from_str(&data_str)
-        .map_err(|_| AppError::Validation("Ошибка данных".into()))?;
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Serialize,
+            "Ошибка сериализации данных, попробуйте снова".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     if data["code"].as_str() != Some(&payload.code) {
-        return Err(AppError::Validation("Неверный код".into()));
+        return Err(ApiResponse::new_err(
+            ErrorCode::Validation,
+            "Неверный код".to_string(),
+            None,
+        ));
     }
 
     let email = data["email"].as_str()
-        .ok_or(AppError::Validation("Ошибка данных".into()))?
+        .ok_or(ApiResponse::new_err(
+            ErrorCode::Validation,
+            "Ошибка данных".to_string(),
+            None,
+        ))?
         .to_string();
 
-    let mut conn = state.db_pool.get().map_err(|e| AppError::Pool(e.into()))?;
+    let mut conn = state.db_pool.get()
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при подключении к БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     diesel::update(users::table.find(user.id))
         .set(users::email.eq(Some(email.clone())))
-        .execute(&mut conn)?;
+        .execute(&mut conn)
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при работе с БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     user.email = Some(email);
 
     redis.del::<&str, ()>(&redis_key).await.ok();
 
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "data": user
-    })))
+    Ok(ApiResponse::new_ok(user))
 }
 
 // POST /api/user/telegram
 pub async fn initiate_set_telegram(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<User>,
-) -> Result<impl IntoResponse, AppError> {
+) -> ApiResult<TelegramResponse> {
     if user.telegram_id.is_some() {
-        return Err(AppError::Validation("Telegram уже установлен".into()));
+        return Err(ApiResponse::new_err(
+            ErrorCode::Validation,
+            "Telegram уже установлен".to_string(),
+            None,
+        ));
     }
 
     let magic_token = token::generate_magic_token();
@@ -222,9 +279,13 @@ pub async fn initiate_set_telegram(
     });
 
     let mut redis = state.redis_conn.clone();
-    redis.set_ex(&redis_key, data.to_string(), 900)
+    redis.set_ex::<_, _, ()>(&redis_key, data.to_string(), 900)
         .await
-        .map_err(|e| AppError::Redis(e))?;
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Redis,
+            "Неизвестная ошибка, повторите запрос позже".to_string(),
+            Some(format!("Redis: {}", e)),
+        ))?;
 
     let deep_link = format!(
         "https://t.me/{}?start=verify_{}",
@@ -232,14 +293,11 @@ pub async fn initiate_set_telegram(
         magic_token
     );
 
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "data": TelegramResponse {
-            deep_link,
-            magic_token,
-            message: "Перейдите по ссылке в Telegram и введите полученный код сюда".to_string()
-        }
-    })))
+    Ok(ApiResponse::new_ok(TelegramResponse {
+        deep_link,
+        magic_token,
+        message: "Перейдите по ссылке в Telegram и введите полученный код сюда".to_string()
+    }))
 }
 
 // POST /api/user/telegram/verify
@@ -247,36 +305,59 @@ pub async fn verify_set_telegram(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
     Json(payload): Json<VerifyPayload>,
-) -> Result<impl IntoResponse, AppError> {
+) -> ApiResult<User> {
     let redis_key = format!("pending_telegram:{}", payload.magic_token);
     let mut redis = state.redis_conn.clone();
 
     let data_str: Option<String> = redis.get(&redis_key).await.ok();
-    let data_str = data_str.ok_or_else(|| AppError::Validation("Код истёк или недействителен".into()))?;
+    let data_str = data_str.ok_or_else(|| ApiResponse::new_err(
+        ErrorCode::Expired,
+        "Код истёк или недействителен".to_string(),
+        None,
+    ))?;
 
     let data: serde_json::Value = serde_json::from_str(&data_str)
-        .map_err(|_| AppError::Validation("Ошибка данных".into()))?;
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Serialize,
+            "Ошибка сериализации данных, попробуйте снова".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     if data["code"].as_str() != Some(&payload.code) {
-        return Err(AppError::Validation("Неверный код".into()));
+        return Err(ApiResponse::new_err(
+            ErrorCode::Validation,
+            "Неверный код".to_string(),
+            None,
+        ));
     }
 
     let telegram_id = data["telegram_chat_id"].as_i64()
-        .ok_or(AppError::Validation("Ошибка данных".into()))?;
+        .ok_or(ApiResponse::new_err(
+            ErrorCode::Validation,
+            "Ошибка данных".to_string(),
+            None,
+        ))?;
 
-    let mut conn = state.db_pool.get().map_err(|e| AppError::Pool(e.into()))?;
+    let mut conn = state.db_pool.get()
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при подключении к БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     diesel::update(users::table.find(user.id))
         .set(users::telegram_id.eq(Some(telegram_id)))
-        .execute(&mut conn)?;
+        .execute(&mut conn)
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка при работе с БД, попробуйте позже".to_string(),
+            Some(e.to_string()),
+        ))?;
 
     user.telegram_id = Some(telegram_id);
 
     redis.del::<&str, ()>(&redis_key).await.ok();
 
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "data": user
-    })))
+    Ok(ApiResponse::new_ok(user))
 }
 

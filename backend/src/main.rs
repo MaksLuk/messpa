@@ -15,6 +15,7 @@ mod schema;
 //mod repositories;
 //mod services;
 mod handlers;
+mod api_response;
 mod middleware;
 mod metrics;
 mod utils;
