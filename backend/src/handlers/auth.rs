@@ -17,9 +17,10 @@ use crate::{
     models::user::{User, NewUser, RefreshSession, NewRefreshSession},
     schema::{users, refresh_sessions},
     utils::{jwt, token, rate_limit, mail},
-    api_response::{ApiResult, ApiResultWithCookie, ApiResponse, ErrorCode},
+    api_response::{ApiResult, ApiResultWithCookie, ApiResponse, ErrorCode, ApiResponseEmpty},
 };
 
+#[derive(utoipa::ToSchema)]
 #[derive(Serialize, Clone)]
 pub struct SendCodeResponse {
     pub deep_link: String,
@@ -27,35 +28,58 @@ pub struct SendCodeResponse {
     pub message: String,
 }
 
+pub type ApiSendCodeResponse = ApiResponse<SendCodeResponse>;
+
+#[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
 pub struct VerifyPayload {
     pub magic_token: String,
     pub code: String,
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Serialize, Clone)]
 pub struct AuthResponse {
     pub access_token: String,
     pub user: User,
 }
 
+pub type ApiAuthResponse = ApiResponse<AuthResponse>;
+
+#[derive(utoipa::ToSchema)]
 #[derive(Serialize, Clone)]
 pub struct RefreshResponse {
     pub access_token: String,
 }
 
+pub type ApiRefreshResponse = ApiResponse<RefreshResponse>;
+
+#[derive(utoipa::ToSchema)]
 #[derive(Serialize, Clone)]
 pub struct EmailResponse {
     pub magic_token: String,
     pub message: String,
 }
 
+pub type ApiResponseEmail = ApiResponse<EmailResponse>;
+
+#[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
 pub struct SendEmailPayload {
     pub email: String,
 }
 
-/// POST /api/v1/auth/telegram/send-code
+/// Отправка кода для входа в Telegram
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/telegram/send-code",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Код успешно инициирован", body = ApiSendCodeResponse),
+        (status = 429, description = "Слишком много попыток", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn send_telegram_code(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -109,7 +133,19 @@ pub async fn send_telegram_code(
     }))
 }
 
-/// POST /api/v1/auth/telegram/verify
+/// Подтверждение входа через Telegram
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/telegram/verify",
+    tag = "auth",
+    request_body = VerifyPayload,
+    responses(
+        (status = 200, description = "Успешная авторизация", body = ApiAuthResponse),
+        (status = 400, description = "Неверный код / истёк токен", body = ApiResponseEmpty),
+        (status = 401, description = "Код неверный / не был отправлен", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn verify_telegram_code(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -256,7 +292,18 @@ pub async fn verify_telegram_code(
     Ok((jar, response))
 }
 
-/// POST /api/v1/auth/email/send-code
+/// Отправка кода для входа на email
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/email/send-code",
+    tag = "auth",
+    request_body = SendEmailPayload,
+    responses(
+        (status = 200, description = "Код отправлен на почту", body = ApiResponseEmail),
+        (status = 429, description = "Rate limit", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn send_email_code(
     State(state): State<Arc<AppState>>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -319,7 +366,19 @@ pub async fn send_email_code(
     }))
 }
 
-// POST /api/v1/auth/email/verify
+/// Подтверждение входа по email
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/email/verify",
+    tag = "auth",
+    request_body = VerifyPayload,
+    responses(
+        (status = 200, description = "Успешная авторизация", body = ApiAuthResponse),
+        (status = 400, description = "Неверный код / истёк токен", body = ApiResponseEmpty),
+        (status = 401, description = "Код неверный / не был отправлен", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn verify_email_code(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -466,7 +525,16 @@ pub async fn verify_email_code(
     Ok((jar, response))
 }
 
-/// POST /api/v1/auth/refresh
+/// Обновление токена
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/refresh",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Токены обновлены", body = ApiRefreshResponse),
+        (status = 401, description = "Недействительный refresh token", body = ApiResponseEmpty)
+    )
+)]
 pub async fn refresh_token(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -574,7 +642,18 @@ pub async fn refresh_token(
     Ok((jar, response))
 }
 
-/// POST /api/v1/auth/logout
+/// Завершение сессии
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/logout",
+    tag = "auth",
+    responses(
+        (status = 200, description = "Успешный выход", body = ApiResponseEmpty),
+        (status = 401, description = "Неверный формат refresh token", body = ApiResponseEmpty),
+        (status = 401, description = "Нет активной сессии", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn logout(
     State(state): State<Arc<AppState>>,
     jar: CookieJar,
@@ -624,7 +703,17 @@ pub async fn logout(
     ))
 }
 
-/// POST /api/v1/auth/logout-all
+/// Завершение всех сессий
+#[utoipa::path(
+    post,
+    path = "/api/v1/auth/logout-all",
+    tag = "auth",
+    security(("bearer_token" = [])),
+    responses(
+        (status = 200, description = "Успешный выход", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn logout_all(
     State(state): State<Arc<AppState>>,
     Extension(user_id): Extension<Uuid>,

@@ -11,7 +11,9 @@ use bigdecimal::BigDecimal;
 use std::io::Write;
 
 use crate::schema::*;
+use crate::api_response::ApiResponse;
 
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(diesel::AsExpression, diesel::FromSqlRow)]
 #[diesel(sql_type = crate::schema::sql_types::Roles)]
@@ -59,6 +61,7 @@ impl ToSql<crate::schema::sql_types::Roles, Pg> for UserRole {
     }
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(diesel::AsExpression, diesel::FromSqlRow)]
 #[diesel(sql_type = crate::schema::sql_types::Languages)]
@@ -88,6 +91,7 @@ impl ToSql<crate::schema::sql_types::Languages, Pg> for Language {
     }
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(diesel::AsExpression, diesel::FromSqlRow)]
 #[diesel(sql_type = crate::schema::sql_types::Currencies)]
@@ -149,6 +153,7 @@ impl ToSql<crate::schema::sql_types::TeamRoles, Pg> for TeamRole {
     }
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Queryable, Selectable, Debug, Serialize, Deserialize, Clone)]
 #[diesel(table_name = users)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -166,6 +171,9 @@ pub struct User {
     pub is_executor: Option<bool>,
     pub register_at: Option<DateTime<Utc>>,
 }
+
+/// Вспомогательный тип для Scalar
+pub type ApiResponseUser = ApiResponse<User>;
 
 #[derive(Insertable, Debug, Serialize, Deserialize)]
 #[diesel(table_name = users)]

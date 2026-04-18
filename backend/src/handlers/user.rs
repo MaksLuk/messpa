@@ -11,39 +11,45 @@ use std::sync::Arc;
 
 use crate::{
     state::AppState,
-    models::user::{User, Language, Currency},
+    models::user::{User, Language, Currency, ApiResponseUser},
     schema::users,
     utils::{mail, token},
-    api_response::{ApiResult, ApiResponse, ErrorCode},
-    handlers::auth::EmailResponse,
+    api_response::{ApiResult, ApiResponse, ErrorCode, ApiResponseEmpty},
+    handlers::auth::{EmailResponse, ApiResponseEmail},
 };
 
+#[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
 pub struct UpdateDisplayNamePayload {
     pub display_name: Option<String>,
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
 pub struct UpdateLanguagePayload {
     pub language: Language,
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
 pub struct UpdateCurrencyPayload {
     pub currency: Currency,
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
 pub struct InitiateEmailPayload {
     pub email: String,
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
 pub struct VerifyPayload {
     pub magic_token: String,
     pub code: String,
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Serialize, Clone)]
 pub struct TelegramResponse {
     pub deep_link: String,
@@ -51,14 +57,38 @@ pub struct TelegramResponse {
     pub message: String,
 }
 
-// GET /api/user/me
+pub type ApiResponseTelegram = ApiResponse<TelegramResponse>;
+
+/// Получение информации о пользователе (о себе)
+#[utoipa::path(
+    get,
+    path = "/api/v1/user/me",
+    tag = "user",
+    security(("bearer_token" = [])),
+    responses(
+        (status = 200, description = "Данные пользователя", body = ApiResponseUser),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty)
+    )
+)]
 pub async fn get_current_user(
     Extension(user): Extension<User>,
 ) -> ApiResult<User> {
     Ok(ApiResponse::new_ok(user))
 }
 
-// PATCH /api/v1/user/display-name
+/// Изменение имени
+#[utoipa::path(
+    patch,
+    path = "/api/v1/user/display-name",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body = UpdateDisplayNamePayload,
+    responses(
+        (status = 200, description = "Имя обновлено", body = ApiResponseUser),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn update_display_name(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -85,7 +115,19 @@ pub async fn update_display_name(
     Ok(ApiResponse::new_ok(user))
 }
 
-// PATCH /api/v1/user/language
+/// Изменение языка
+#[utoipa::path(
+    patch,
+    path = "/api/v1/user/language",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body = UpdateLanguagePayload,
+    responses(
+        (status = 200, description = "Язык обновлён", body = ApiResponseUser),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn update_language(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -112,7 +154,19 @@ pub async fn update_language(
     Ok(ApiResponse::new_ok(user))
 }
 
-// PATCH /api/v1/user/currency
+/// Изменение валюты
+#[utoipa::path(
+    patch,
+    path = "/api/v1/user/currency",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body = UpdateCurrencyPayload,
+    responses(
+        (status = 200, description = "Валюта обновлена", body = ApiResponseUser),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn update_currency(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -139,7 +193,20 @@ pub async fn update_currency(
     Ok(ApiResponse::new_ok(user))
 }
 
-// POST /api/v1/user/email
+/// Отправка кода для установки email
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/email",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body = InitiateEmailPayload,
+    responses(
+        (status = 200, description = "Код отправлен", body = ApiResponseEmail),
+        (status = 400, description = "Email уже установлен", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn initiate_set_email(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<User>,
@@ -194,7 +261,20 @@ pub async fn initiate_set_email(
     }))
 }
 
-// POST /api/v1/user/email/verify
+/// Подтверждение установки email
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/email/verify",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body = VerifyPayload,
+    responses(
+        (status = 200, description = "Email подтверждён", body = ApiResponseUser),
+        (status = 400, description = "Код истёк или недействителен", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn verify_set_email(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,
@@ -256,7 +336,19 @@ pub async fn verify_set_email(
     Ok(ApiResponse::new_ok(user))
 }
 
-// POST /api/v1/user/telegram
+/// Отправка кода для установки telegram
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/telegram",
+    tag = "user",
+    security(("bearer_token" = [])),
+    responses(
+        (status = 200, description = "Deep link сгенерирован", body = ApiResponseTelegram),
+        (status = 400, description = "Email уже установлен", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn initiate_set_telegram(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<User>,
@@ -300,7 +392,20 @@ pub async fn initiate_set_telegram(
     }))
 }
 
-// POST /api/v1/user/telegram/verify
+/// Подтверждение установки telegram
+#[utoipa::path(
+    post,
+    path = "/api/v1/user/telegram/verify",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body = VerifyPayload,
+    responses(
+        (status = 200, description = "Telegram привязан", body = ApiResponseUser),
+        (status = 400, description = "Код истёк или недействителен", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
 pub async fn verify_set_telegram(
     State(state): State<Arc<AppState>>,
     Extension(mut user): Extension<User>,

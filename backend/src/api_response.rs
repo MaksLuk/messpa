@@ -8,6 +8,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 /// Коды ошибок API
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Serialize, Clone)]
 pub enum ErrorCode {
     /// Неавторизован/слишком много попыток
@@ -29,6 +30,7 @@ pub enum ErrorCode {
 }
 
 /// Формат ошибки метода API
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Serialize, Clone)]
 pub struct ApiError {
     code: ErrorCode,
@@ -37,12 +39,14 @@ pub struct ApiError {
 }
 
 /// Метаданные ответа API
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Serialize, Clone)]
 pub struct ApiMeta {
     request_id: Uuid,
 }
 
 /// Формат ответа API
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Serialize, Clone)]
 pub struct ApiResponse<T: Serialize + Clone> {
     ok: bool,
@@ -106,3 +110,7 @@ impl<T: Serialize + Clone> IntoResponse for ApiResponse<T> {
 pub type ApiResult<T> = Result<ApiResponse<T>, ApiResponse<()>>;
 
 pub type ApiResultWithCookie<T> = Result<(CookieJar, ApiResponse<T>), ApiResponse<()>>;
+
+/// Вспомогательный тип для Scalar
+pub type ApiResponseEmpty = ApiResponse<()>;
+
