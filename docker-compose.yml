@@ -48,6 +48,13 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - REFRESH_PEPPER=${REFRESH_PEPPER}
       - TELEGRAM_BOT_USERNAME=${TELEGRAM_BOT_USERNAME}
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=freelance
+      - S3_SECRET_KEY=${MINIO_PASSWORD}
+      - S3_BUCKET=freelance-files
+      - S3_PUBLIC_URL=http://${DOMAIN}:9000
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
       - TEST=True
     ports:
       - "3001:3001"
@@ -57,6 +64,27 @@ services:
       redis:
         condition: service_started
       postfix:
+        condition: service_started
+
+  storage:
+    build: ./storage
+    container_name: storage
+    restart: unless-stopped
+    environment:
+      - S3_ENDPOINT=http://minio:9000
+      - S3_ACCESS_KEY=freelance
+      - S3_SECRET_KEY=${MINIO_PASSWORD}
+      - S3_BUCKET=freelance-files
+      - S3_PUBLIC_URL=http://${DOMAIN}:9000
+      - CLAMAV_HOST=clamav
+      - CLAMAV_PORT=3310
+      - SERVER_PORT=3002
+    ports:
+      - "3002:3002"
+    depends_on:
+      minio:
+        condition: service_started
+      clamav:
         condition: service_started
 
   frontend:
@@ -190,6 +218,27 @@ services:
     ports:
       - "1025:25"
 
+  minio:
+    image: minio/minio:latest
+    container_name: freelance-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: freelance
+      MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  clamav:
+    image: clamav/clamav:latest
+    container_name: freelance-clamav
+    restart: unless-stopped
+    volumes:
+      - clamav_data:/var/lib/clamav
+
 volumes:
   postgres_data:
   redis_data:
@@ -198,3 +247,5 @@ volumes:
   grafana_data:
   certbot-webroot:
   certbot-conf:
+  minio_data:
+  clamav_data:

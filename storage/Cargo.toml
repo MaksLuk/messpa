@@ -1,0 +1,24 @@
+[package]
+name = "storage"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aws-config = { version = "1.8.16", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.130.0"
+axum = { version = "0.8.9", features = ["multipart", "query"] }
+bytes = "1.11.1"
+dotenvy = "0.15.7"
+config = "0.15.20"
+flate2 = { version = "1.1.9", features = ["rust_backend"] }
+futures-util = "0.3.32"
+mime_guess = "2.0.5"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+tempfile = "3.27.0"
+tokio = { version = "1.52.1", features = ["full"] }
+tokio-util = "0.7.18"
+tower-http = { version = "0.6.8", features = ["cors", "trace"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.23.1", features = ["v4"] }
