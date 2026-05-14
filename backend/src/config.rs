@@ -17,6 +17,8 @@ pub struct Config {
     pub email_addr: String,
     pub telegram_bot_token: String,
     pub telegram_bot_username: String,
+    /// Адреса приложения загрузки файлов
+    pub storage_service_addr: String,
     /// Тестируется ли приложение (true) или запущено на проде (false)
     pub test: bool,
 }

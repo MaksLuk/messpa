@@ -26,11 +26,13 @@ CREATE TABLE users (
     telegram_id BIGINT UNIQUE,
     display_name VARCHAR(100),
     avatar_url TEXT,
+    avatar_key TEXT,
     banner_url TEXT,
+    banner_key TEXT,
     description TEXT,
     language languages NOT NULL DEFAULT 'ru',
     currency currencies NOT NULL DEFAULT 'RUB',
-    is_executor BOOLEAN DEFAULT FALSE,
+    is_executor BOOLEAN NOT NULL DEFAULT FALSE,
     register_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -82,4 +84,22 @@ CREATE TABLE team_members (
     joined_at TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY (team_id, user_id)
 );
+
+CREATE TYPE invitation_status AS ENUM ('pending', 'accepted', 'declined', 'expired');
+CREATE TABLE team_invitations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    team_id         UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    inviter_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invitee_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role            team_roles NOT NULL,
+    status          invitation_status NOT NULL DEFAULT 'pending',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at      TIMESTAMPTZ,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    -- Один активный инвайт на пользователя в команде
+    UNIQUE (team_id, invitee_id)
+);
+CREATE INDEX idx_team_invitations_invitee ON team_invitations(invitee_id);
+CREATE INDEX idx_team_invitations_team ON team_invitations(team_id);
 

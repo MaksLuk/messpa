@@ -16,6 +16,10 @@ pub mod sql_types {
     #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
     #[diesel(postgres_type(name = "team_roles"))]
     pub struct TeamRoles;
+
+    #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+    #[diesel(postgres_type(name = "invitation_status"))]
+    pub struct InvitationStatus;
 }
 
 diesel::table! {
@@ -84,11 +88,13 @@ diesel::table! {
         #[max_length = 100]
         display_name -> Nullable<Varchar>,
         avatar_url -> Nullable<Text>,
+        avatar_key -> Nullable<Text>,
         banner_url -> Nullable<Text>,
+        banner_key -> Nullable<Text>,
         description -> Nullable<Text>,
         language -> Languages,
         currency -> Currencies,
-        is_executor -> Nullable<Bool>,
+        is_executor -> Bool,
         register_at -> Nullable<Timestamptz>,
     }
 }
@@ -108,16 +114,38 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    use diesel::sql_types::*;
+    use crate::schema::sql_types::InvitationStatus;
+    use crate::schema::sql_types::TeamRoles;
+
+    team_invitations (id) {
+        id -> Uuid,
+        team_id -> Uuid,
+        inviter_id -> Uuid,
+        invitee_id -> Uuid,
+        role -> TeamRoles,
+        status -> InvitationStatus,
+        created_at -> Timestamptz,
+        expires_at -> Nullable<Timestamptz>,
+        updated_at -> Timestamptz,
+    }
+}
+
 diesel::joinable!(team_members -> teams (team_id));
 diesel::joinable!(team_members -> users (user_id));
 diesel::joinable!(user_info_executor -> specializations (specialization));
 diesel::joinable!(user_info_executor -> users (user_id));
 diesel::joinable!(refresh_sessions -> users (user_id));
+diesel::joinable!(team_invitations -> teams (team_id));
+diesel::joinable!(team_invitations -> users (inviter_id));
+//diesel::joinable!(team_invitations -> users (invitee_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     specializations,
     team_members,
     teams,
+    team_invitations,
     user_info_executor,
     users,
     refresh_sessions,

@@ -1,5 +1,5 @@
 use axum::{
-    extract::{State, Extension},
+    extract::{State, Extension, Multipart},
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,16 @@ pub struct UpdateLanguagePayload {
 pub struct UpdateCurrencyPayload {
     pub currency: Currency,
 }
+
+#[derive(utoipa::ToSchema)]
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ImageUploadResponse {
+    pub success: bool,
+    pub link: String,
+    pub key: String,
+}
+
+type ApiResponseImageUploadResponse = ApiResponse<ImageUploadResponse>;
 
 #[derive(utoipa::ToSchema)]
 #[derive(Deserialize)]
@@ -189,6 +199,348 @@ pub async fn update_currency(
         ))?;
 
     user.currency = payload.currency;
+
+    Ok(ApiResponse::new_ok(user))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/v1/user/avatar",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body(content_type = "multipart/form-data", description = "Загрузка аватара"),
+    responses(
+        (status = 200, description = "Аватар успешно обновлён", body = ApiResponseImageUploadResponse),
+        (status = 400, description = "Неверный запрос", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
+pub async fn update_avatar(
+    State(state): State<Arc<AppState>>,
+    Extension(mut user): Extension<User>,
+    mut multipart: Multipart,
+) -> ApiResult<ImageUploadResponse> {
+    let url = format!("{}/upload/image?permanent=true", state.config.storage_service_addr);
+    // Первое поле с файлом
+    while let Some(field) = multipart.next_field().await.map_err(|e| ApiResponse::new_err(
+        ErrorCode::Serialize, "Ошибка получения файла".to_string(), Some(e.to_string())
+    ))? {
+        if field.file_name().is_none() {
+            continue; // Пропуск текстовых полей
+        }
+
+        let file_name = field.file_name().unwrap_or("unknown").to_string();
+        let content_type = field.content_type().unwrap_or("application/octet-stream").to_string();
+
+        // Побайтовое копирование всего файла в память (Field::bytes читает чанками)
+        let file_bytes = field.bytes().await
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::Serialize, "Ошибка чтения файла".to_string(), Some(e.to_string())
+            ))?;
+
+        let part = reqwest::multipart::Part::bytes(file_bytes.to_vec())
+            .file_name(file_name)
+            .mime_str(&content_type)
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Ошибка формирования запроса к сервису файлов".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        let form = reqwest::multipart::Form::new().part("file", part);
+
+        // Отправляем в файл-сервис
+        let response = state
+            .http_client
+            .post(&url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Не удалось связаться с сервисом файлов".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        if !response.status().is_success() {
+            let err_text = response.text().await.unwrap_or_default();
+            return Err(ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Ошибка загрузки файла".to_string(),
+                Some(err_text),
+            ));
+        }
+
+        let storage_resp: ImageUploadResponse = response
+            .json()
+            .await
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Некорректный ответ от файлового сервиса".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        // Обновление БД
+        let mut conn = state.db_pool.get()
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::Database,
+                "Ошибка подключения к БД".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        diesel::update(users::table.find(user.id))
+            .set((
+                users::avatar_url.eq(Some(&storage_resp.link)),
+                users::avatar_key.eq(Some(&storage_resp.key)),
+            ))
+            .execute(&mut conn)
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::Database,
+                "Ошибка обновления аватара в БД".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        // Если уже есть автар - удаление его
+        if let Some(_) = user.avatar_url {
+            let _ = state
+                .http_client
+                .delete(format!(
+                    "{}/files/{}",
+                    state.config.storage_service_addr,
+                    storage_resp.key.clone(),
+                ))
+            .send()
+            .await;
+        }
+
+        user.avatar_url = Some(storage_resp.link.clone());
+        user.avatar_key = Some(storage_resp.key.clone());
+
+        return Ok(ApiResponse::new_ok(storage_resp));
+    }
+
+    Err(ApiResponse::new_err(
+        ErrorCode::Serialize, "Файл отсутствует в запросе".to_string(), None
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/v1/user/avatar",
+    tag = "user",
+    security(("bearer_token" = [])),
+    responses(
+        (status = 200, description = "Аватар успешно удалён", body = ApiResponseUser),
+        (status = 400, description = "Неверный запрос", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
+pub async fn delete_avatar(
+    State(state): State<Arc<AppState>>,
+    Extension(mut user): Extension<User>,
+) -> ApiResult<User> {
+    // Обновление БД
+    let mut conn = state.db_pool.get()
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка подключения к БД".to_string(),
+            Some(e.to_string()),
+        ))?;
+
+    diesel::update(users::table.find(user.id))
+        .set((users::avatar_url.eq(None::<String>), users::avatar_key.eq(None::<String>)))
+        .execute(&mut conn)
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка удаления аватара из БД".to_string(),
+            Some(e.to_string()),
+        ))?;
+
+    let _ = state
+        .http_client
+        .delete(format!(
+            "{}/files/{}",
+            state.config.storage_service_addr,
+            user.avatar_key.unwrap_or("".to_string()),
+        ))
+        .send()
+        .await;
+
+    user.avatar_url = None;
+    user.avatar_key = None;
+
+    Ok(ApiResponse::new_ok(user))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/v1/user/banner",
+    tag = "user",
+    security(("bearer_token" = [])),
+    request_body(content_type = "multipart/form-data", description = "Загрузка аватара"),
+    responses(
+        (status = 200, description = "Аватар успешно обновлён", body = ApiResponseImageUploadResponse),
+        (status = 400, description = "Неверный запрос", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
+pub async fn update_banner(
+    State(state): State<Arc<AppState>>,
+    Extension(mut user): Extension<User>,
+    mut multipart: Multipart,
+) -> ApiResult<ImageUploadResponse> {
+    let url = format!("{}/upload/image?permanent=true", state.config.storage_service_addr);
+    // Первое поле с файлом
+    while let Some(field) = multipart.next_field().await.map_err(|e| ApiResponse::new_err(
+        ErrorCode::Serialize, "Ошибка получения файла".to_string(), Some(e.to_string())
+    ))? {
+        if field.file_name().is_none() {
+            continue; // Пропуск текстовых полей
+        }
+
+        let file_name = field.file_name().unwrap_or("unknown").to_string();
+        let content_type = field.content_type().unwrap_or("application/octet-stream").to_string();
+
+        // Побайтовое копирование всего файла в память (Field::bytes читает чанками)
+        let file_bytes = field.bytes().await
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::Serialize, "Ошибка чтения файла".to_string(), Some(e.to_string())
+            ))?;
+
+        let part = reqwest::multipart::Part::bytes(file_bytes.to_vec())
+            .file_name(file_name)
+            .mime_str(&content_type)
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Ошибка формирования запроса к сервису файлов".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        let form = reqwest::multipart::Form::new().part("file", part);
+
+        // Отправляем в файл-сервис
+        let response = state
+            .http_client
+            .post(&url)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Не удалось связаться с сервисом файлов".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        if !response.status().is_success() {
+            let err_text = response.text().await.unwrap_or_default();
+            return Err(ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Ошибка загрузки файла".to_string(),
+                Some(err_text),
+            ));
+        }
+
+        let storage_resp: ImageUploadResponse = response
+            .json()
+            .await
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::FileService,
+                "Некорректный ответ от файлового сервиса".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        // Обновление БД
+        let mut conn = state.db_pool.get()
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::Database,
+                "Ошибка подключения к БД".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        diesel::update(users::table.find(user.id))
+            .set((
+                users::banner_url.eq(Some(&storage_resp.link)),
+                users::banner_key.eq(Some(&storage_resp.key)),
+            ))
+            .execute(&mut conn)
+            .map_err(|e| ApiResponse::new_err(
+                ErrorCode::Database,
+                "Ошибка обновления аватара в БД".to_string(),
+                Some(e.to_string()),
+            ))?;
+
+        // Если уже есть баннер - удаление его
+        if let Some(_) = user.banner_url {
+            let _ = state
+                .http_client
+                .delete(format!(
+                    "{}/files/{}",
+                    state.config.storage_service_addr,
+                    storage_resp.key.clone(),
+                ))
+            .send()
+            .await;
+        }
+
+        user.banner_url = Some(storage_resp.link.clone());
+        user.banner_key = Some(storage_resp.key.clone());
+
+        return Ok(ApiResponse::new_ok(storage_resp));
+    }
+
+    Err(ApiResponse::new_err(
+        ErrorCode::Serialize, "Файл отсутствует в запросе".to_string(), None
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/v1/user/banner",
+    tag = "user",
+    security(("bearer_token" = [])),
+    responses(
+        (status = 200, description = "Баннер успешно удалён", body = ApiResponseUser),
+        (status = 400, description = "Неверный запрос", body = ApiResponseEmpty),
+        (status = 401, description = "Неавторизован", body = ApiResponseEmpty),
+        (status = 500, description = "Ошибка сервера", body = ApiResponseEmpty)
+    )
+)]
+pub async fn delete_banner(
+    State(state): State<Arc<AppState>>,
+    Extension(mut user): Extension<User>,
+) -> ApiResult<User> {
+    // Обновление БД
+    let mut conn = state.db_pool.get()
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка подключения к БД".to_string(),
+            Some(e.to_string()),
+        ))?;
+
+    diesel::update(users::table.find(user.id))
+        .set((users::banner_url.eq(None::<String>), users::banner_key.eq(None::<String>)))
+        .execute(&mut conn)
+        .map_err(|e| ApiResponse::new_err(
+            ErrorCode::Database,
+            "Ошибка удаления баннера из БД".to_string(),
+            Some(e.to_string()),
+        ))?;
+
+    let _ = state
+        .http_client
+        .delete(format!(
+            "{}/files/{}",
+            state.config.storage_service_addr,
+            user.banner_key.unwrap_or("".to_string()),
+        ))
+        .send()
+        .await;
+
+    user.banner_url = None;
+    user.banner_key = None;
 
     Ok(ApiResponse::new_ok(user))
 }

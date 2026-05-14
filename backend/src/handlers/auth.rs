@@ -221,11 +221,13 @@ pub async fn verify_telegram_code(
                 telegram_id: Some(telegram_chat_id),
                 display_name: None,
                 avatar_url: None,
+                avatar_key: None,
                 banner_url: None,
+                banner_key: None,
                 description: None,
                 language: crate::models::user::Language::Ru,
                 currency: crate::models::user::Currency::Rub,
-                is_executor: Some(false),
+                is_executor: false,
             };
             diesel::insert_into(users::table)
                 .values(&new_user)
@@ -454,11 +456,13 @@ pub async fn verify_email_code(
                 telegram_id: None,
                 display_name: None,
                 avatar_url: None,
+                avatar_key: None,
                 banner_url: None,
+                banner_key: None,
                 description: None,
                 language: crate::models::user::Language::Ru,
                 currency: crate::models::user::Currency::Rub,
-                is_executor: Some(false),
+                is_executor: false,
             };
             diesel::insert_into(users::table)
                 .values(&new_user)

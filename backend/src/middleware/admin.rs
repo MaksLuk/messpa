@@ -20,7 +20,7 @@ use crate::{
 pub async fn admin_middleware(
     State(state): State<Arc<AppState>>,
     TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
-    mut req: Request,
+    req: Request,
     next: Next,
 ) -> Result<impl IntoResponse, AppError> {
     let token = auth.token();

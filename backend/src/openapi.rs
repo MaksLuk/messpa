@@ -26,10 +26,35 @@ use utoipa::OpenApi;
         crate::handlers::user::update_display_name,
         crate::handlers::user::update_language,
         crate::handlers::user::update_currency,
+        crate::handlers::user::update_avatar,
+        crate::handlers::user::delete_avatar,
+        crate::handlers::user::update_banner,
+        crate::handlers::user::delete_banner,
         crate::handlers::user::initiate_set_email,
         crate::handlers::user::verify_set_email,
         crate::handlers::user::initiate_set_telegram,
         crate::handlers::user::verify_set_telegram,
+
+        // Executor
+        crate::handlers::executor::become_executor,
+        crate::handlers::executor::stop_beeng_executor,
+        crate::handlers::executor::update_specialization,
+        crate::handlers::executor::update_timezone,
+        crate::handlers::executor::update_schedule,
+        crate::handlers::executor::update_contacts,
+        crate::handlers::executor::get_user_executor,
+
+        // Справочные таблицы
+        crate::handlers::reference::get_specializations,
+
+        // Команды
+        crate::handlers::team::create_team,
+        crate::handlers::team::update_team,
+        crate::handlers::team::change_team_member_role,
+        crate::handlers::team::remove_team_member,
+        crate::handlers::team::leave_team,
+        crate::handlers::team::invite_user_to_team,
+        crate::handlers::team::accept_team_invitation,
     ),
     components(
         schemas(
@@ -53,6 +78,8 @@ use utoipa::OpenApi;
 
             crate::models::user::User,
             crate::models::user::ApiResponseUser,
+            crate::models::user::UserInfoExecutor,
+            crate::models::user::ApiResponseExecutor,
             crate::models::user::Language,
             crate::models::user::Currency,
 

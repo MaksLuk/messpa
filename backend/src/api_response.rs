@@ -25,6 +25,14 @@ pub enum ErrorCode {
     Mail,
     /// Ошибка валидации входных данных
     Validation,
+    /// Ошибка обращения к сервису файлов
+    FileService,
+    /// Не найдено
+    NotFound,
+    /// Нет прав
+    Forbidden,
+    /// Конфликт
+    Conflict,
     /// Другая ошибка (вспомогательный элемент)
     Other,
 }
@@ -98,6 +106,8 @@ impl<T: Serialize + Clone> IntoResponse for ApiResponse<T> {
                 }
             ).code {
                 ErrorCode::Unauthorized => StatusCode::UNAUTHORIZED,
+                ErrorCode::Forbidden => StatusCode::FORBIDDEN,
+                ErrorCode::NotFound => StatusCode::NOT_FOUND,
                 ErrorCode::Validation | ErrorCode::Expired => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             }

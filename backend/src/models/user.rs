@@ -20,7 +20,7 @@ use crate::api_response::ApiResponse;
 pub enum UserRole {
     Unverified,
     Client,
-    Executor,
+    //Executor,
     Moderator,
     Support,
     Admin,
@@ -34,7 +34,7 @@ impl FromSql<crate::schema::sql_types::Roles, Pg> for UserRole {
         match s.as_str() {
             "unverified" => Ok(UserRole::Unverified),
             "client" => Ok(UserRole::Client),
-            "executor" => Ok(UserRole::Executor),
+            //"executor" => Ok(UserRole::Executor),
             "moderator" => Ok(UserRole::Moderator),
             "support" => Ok(UserRole::Support),
             "admin" => Ok(UserRole::Admin),
@@ -50,7 +50,7 @@ impl ToSql<crate::schema::sql_types::Roles, Pg> for UserRole {
         match self {
             UserRole::Unverified => out.write_all(b"unverified")?,
             UserRole::Client      => out.write_all(b"client")?,
-            UserRole::Executor    => out.write_all(b"executor")?,
+            //UserRole::Executor    => out.write_all(b"executor")?,
             UserRole::Moderator   => out.write_all(b"moderator")?,
             UserRole::Support     => out.write_all(b"support")?,
             UserRole::Admin       => out.write_all(b"admin")?,
@@ -118,6 +118,7 @@ impl ToSql<crate::schema::sql_types::Currencies, Pg> for Currency {
     }
 }
 
+#[derive(utoipa::ToSchema)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[derive(diesel::AsExpression, diesel::FromSqlRow)]
 #[diesel(sql_type = crate::schema::sql_types::TeamRoles)]
@@ -164,11 +165,13 @@ pub struct User {
     pub telegram_id: Option<i64>,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub avatar_key: Option<String>,
     pub banner_url: Option<String>,
+    pub banner_key: Option<String>,
     pub description: Option<String>,
     pub language: Language,
     pub currency: Currency,
-    pub is_executor: Option<bool>,
+    pub is_executor: bool,
     pub register_at: Option<DateTime<Utc>>,
 }
 
@@ -183,11 +186,13 @@ pub struct NewUser {
     pub telegram_id: Option<i64>,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub avatar_key: Option<String>,
     pub banner_url: Option<String>,
+    pub banner_key: Option<String>,
     pub description: Option<String>,
     pub language: Language,
     pub currency: Currency,
-    pub is_executor: Option<bool>,
+    pub is_executor: bool,
 }
 
 // Для обновления пользователя (частично)
@@ -200,16 +205,20 @@ pub struct UpdateUser {
     pub description: Option<String>,
     pub language: Option<Language>,
     pub currency: Option<Currency>,
-    pub is_executor: Option<bool>,
+    pub is_executor: bool,
 }
 
-#[derive(Queryable, Selectable, Debug, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
+#[derive(Queryable, Selectable, Debug, Serialize, Deserialize, Clone)]
 #[diesel(table_name = specializations)]
 pub struct Specialization {
     pub id: i32,
     pub name_ru: String,
     pub name_en: String,
 }
+
+/// Вспомогательный тип для Scalar
+pub type ApiResponceSpecializations = ApiResponse<Vec<Specialization>>;
 
 #[derive(Insertable, Debug)]
 #[diesel(table_name = specializations)]
@@ -218,11 +227,13 @@ pub struct NewSpecialization {
     pub name_en: String,
 }
 
-#[derive(Queryable, Selectable, Debug, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
+#[derive(Insertable, AsChangeset, Queryable, Selectable, Debug, Serialize, Deserialize, Clone)]
 #[diesel(table_name = user_info_executor)]
 pub struct UserInfoExecutor {
     pub user_id: Uuid,
     pub specialization: Option<i32>,
+    #[schema(value_type = f64)]
     pub rating: Option<BigDecimal>,
     pub review_count: Option<i32>,
     pub completed_orders: Option<i32>,
@@ -231,20 +242,11 @@ pub struct UserInfoExecutor {
     pub contact_rules: Option<JsonValue>,  // JSONB
 }
 
-#[derive(Insertable, AsChangeset, Debug)]
-#[diesel(table_name = user_info_executor)]
-pub struct NewUserInfoExecutor {
-    pub user_id: Uuid,
-    pub specialization: Option<i32>,
-    pub rating: Option<BigDecimal>,
-    pub review_count: Option<i32>,
-    pub completed_orders: Option<i32>,
-    pub timezone: Option<String>,
-    pub work_schedule: Option<JsonValue>,
-    pub contact_rules: Option<JsonValue>,
-}
+/// Вспомогательный тип для Scalar
+pub type ApiResponseExecutor = ApiResponse<UserInfoExecutor>;
 
-#[derive(Queryable, Selectable, Debug, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
+#[derive(Queryable, Selectable, Debug, Serialize, Deserialize, Clone)]
 #[diesel(table_name = teams)]
 pub struct Team {
     pub id: Uuid,
@@ -258,7 +260,11 @@ pub struct Team {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Insertable, AsChangeset, Debug)]
+/// Вспомогательный тип для Scalar
+pub type ApiResponseTeam = ApiResponse<Team>;
+
+#[derive(utoipa::ToSchema)]
+#[derive(Insertable, AsChangeset, Debug, Deserialize, Clone)]
 #[diesel(table_name = teams)]
 pub struct NewTeam {
     pub name: String,
@@ -269,7 +275,7 @@ pub struct NewTeam {
     pub public_contacts: Option<JsonValue>,
 }
 
-#[derive(AsChangeset, Debug)]
+#[derive(AsChangeset, Debug, Deserialize, utoipa::ToSchema, Clone)]
 #[diesel(table_name = teams)]
 pub struct UpdateTeam {
     pub name: Option<String>,
@@ -277,11 +283,12 @@ pub struct UpdateTeam {
     pub banner_url: Option<String>,
     pub logo_url: Option<String>,
     pub specializations: Option<Vec<Option<i32>>>,
-    pub public_contacts: Option<JsonValue>,
+    pub public_contacts: Option<serde_json::Value>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Queryable, Selectable, Debug, Serialize, Deserialize)]
+#[derive(utoipa::ToSchema)]
+#[derive(Queryable, Selectable, Debug, Serialize, Deserialize, Clone)]
 #[diesel(table_name = team_members)]
 pub struct TeamMember {
     pub team_id: Uuid,
@@ -289,6 +296,9 @@ pub struct TeamMember {
     pub role: TeamRole,
     pub joined_at: Option<DateTime<Utc>>,
 }
+
+/// Вспомогательный тип для Scalar
+pub type ApiResponseTeamMember = ApiResponse<TeamMember>;
 
 #[derive(Insertable, Debug)]
 #[diesel(table_name = team_members)]
@@ -331,4 +341,69 @@ pub struct NewRefreshSession {
     pub user_agent: String,
     pub expires_at: chrono::NaiveDateTime,
 }
+
+#[derive(utoipa::ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(diesel::AsExpression, diesel::FromSqlRow)]
+#[diesel(sql_type = crate::schema::sql_types::InvitationStatus)]
+pub enum InvitationStatus {
+    Pending,
+    Accepted,
+    Declined,
+    Expired,
+}
+
+impl FromSql<crate::schema::sql_types::InvitationStatus, Pg> for InvitationStatus {
+    fn from_sql(bytes: diesel::pg::PgValue<'_>) -> deserialize::Result<Self> {
+        let s = <String as FromSql<diesel::sql_types::Text, Pg>>::from_sql(bytes)?;
+        match s.as_str() {
+            "pending" => Ok(InvitationStatus::Pending),
+            "accepted" => Ok(InvitationStatus::Accepted),
+            "declined" => Ok(InvitationStatus::Declined),
+            "expired" => Ok(InvitationStatus::Expired),
+            _ => Err("Unknown invitation status".into()),
+        }
+    }
+}
+
+impl ToSql<crate::schema::sql_types::InvitationStatus, Pg> for InvitationStatus {
+    fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+        match self {
+            InvitationStatus::Pending => out.write_all(b"pending")?,
+            InvitationStatus::Accepted => out.write_all(b"accepted")?,
+            InvitationStatus::Declined => out.write_all(b"declined")?,
+            InvitationStatus::Expired => out.write_all(b"expired")?,
+        }
+        Ok(IsNull::No)
+    }
+}
+
+#[derive(utoipa::ToSchema)]
+#[derive(Queryable, Selectable, Debug, Serialize, Deserialize, Clone)]
+#[diesel(table_name = team_invitations)]
+pub struct TeamInvitation {
+    pub id: Uuid,
+    pub team_id: Uuid,
+    pub inviter_id: Uuid,
+    pub invitee_id: Uuid,
+    pub role: TeamRole,
+    pub status: InvitationStatus,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = team_invitations)]
+pub struct NewTeamInvitation {
+    pub team_id: Uuid,
+    pub inviter_id: Uuid,
+    pub invitee_id: Uuid,
+    pub role: TeamRole,
+    pub status: InvitationStatus,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Вспомогательный тип для Scalar
+pub type ApiResponseTeamInvitation = ApiResponse<TeamInvitation>;
 
